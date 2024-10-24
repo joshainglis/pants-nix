@@ -1,42 +1,69 @@
 {
-  nixConfig = {
-    extra-substituters = [
-      "https://pants-nix.cachix.org"
-    ];
-    extra-trusted-public-keys = [
-      "pants-nix.cachix.org-1:qbtCBNLKjk4XIuZPquG8oQuEILiIFsd/pI9nkJ4W2OQ="
-    ];
-  };
-  description = "A very basic flake";
+  description = "Pants build system Nix flake";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-23.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = {
+  outputs = inputs @ {
     self,
     nixpkgs,
+    flake-parts,
     rust-overlay,
-  }: let
-    system = "x86_64-linux";
-    pkgs = import nixpkgs {
-      inherit system;
-      overlays = [rust-overlay.overlays.default];
+    ...
+  }:
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+      perSystem = {
+        config,
+        self',
+        inputs',
+        system,
+        ...
+      }: let
+        overlays = [
+          (import rust-overlay)
+          (
+            final: prev: {
+              python39 = prev.python39.override {
+                packageOverrides = python-final: python-prev: {
+                  dnspython = python-prev.dnspython.overrideAttrs (old: {
+                    disabledTests =
+                      old.disabledTests
+                      ++ [
+                        "testCanonicalNameCNAME"
+                        "testCanonicalNameDangling"
+                        "testQueryUDPFallback"
+                        "testQueryUDPFallbackWithSocket"
+                        "testZoneForName1"
+                        "testZoneForName2"
+                      ];
+                  });
+                };
+              };
+            }
+          )
+        ];
+        pkgs = import nixpkgs {inherit system overlays;};
+      in {
+        packages = pkgs.callPackage ./tags {inherit pkgs;};
+
+        devShells.default = pkgs.mkShell {
+          packages = [
+            pkgs.nix-prefetch-git
+            (pkgs.python3.withPackages (ps: [
+              ps.pex
+              ps.aiofiles
+              ps.mypy
+              ps.pytest
+              ps.requests
+              ps.types-requests
+            ]))
+          ];
+        };
+      };
     };
-    pants-bin = pkgs.callPackage ./. {};
-  in {
-    packages.${system} = pants-bin;
-    devShells.${system}.default = pkgs.mkShell {
-      packages = [
-        pkgs.nix-prefetch-git
-        pkgs.python3
-        pkgs.python3Packages.aiofiles
-        pkgs.python3Packages.mypy
-        pkgs.python3Packages.pytest
-        pkgs.python3Packages.requests
-        pkgs.python3Packages.types-requests
-      ];
-    };
-  };
 }

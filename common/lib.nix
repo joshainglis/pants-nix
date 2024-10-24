@@ -1,174 +1,146 @@
-let
+{pkgs}: {
   makePants = {
     version,
     hash,
     rustVersion,
     cargoLock,
     patches,
-  }: (
-    {
-      lib,
-      fetchFromGitHub,
-      python3,
-      stdenv,
-      protobuf,
-      rust-bin,
-      makeRustPlatform,
-    }: let
-      python = python3;
-      cargo = rust-bin.stable.${rustVersion}.default;
-      rustc = rust-bin.stable.${rustVersion}.default;
-      rustPlatform = makeRustPlatform {
-        inherit cargo rustc;
+    pythonVersion ? "39",
+  }: let
+    pants-engine-func = pkgs.callPackage ./pants-engine.nix {};
+    python = pkgs."python${pythonVersion}";
+    pythonPackages = pkgs."python${pythonVersion}Packages";
+
+    lib = pkgs.lib;
+
+    src = pkgs.fetchFromGitHub {
+      owner = "pantsbuild";
+      repo = "pants";
+      rev = "release_${version}";
+      inherit hash;
+    };
+
+    pants-engine = pants-engine-func {inherit src version hash python rustVersion cargoLock patches;};
+  in
+    pythonPackages.buildPythonApplication {
+      inherit version src;
+      pname = "pants";
+      pyproject = true;
+
+      buildInputs = builtins.attrValues {
+        inherit
+          (pythonPackages)
+          setuptools
+          ;
       };
-      src = fetchFromGitHub {
-        inherit hash;
-        owner = "pantsbuild";
-        repo = "pants";
-        rev = "release_${version}";
+
+      # curl -L -O https://raw.githubusercontent.com/pantsbuild/pants/release_2.20.0/3rdparty/python/requirements.txt
+      propagatedBuildInputs = builtins.attrValues {
+        inherit
+          (pythonPackages)
+          ansicolors
+          chevron
+          fasteners
+          freezegun
+          ijson
+          node-semver
+          packaging
+          pex
+          psutil
+          pytest
+          python-lsp-jsonrpc
+          pyyaml
+          requests
+          setproctitle
+          setuptools
+          toml
+          types-freezegun
+          types-pyyaml
+          types-requests
+          types-setuptools
+          types-toml
+          typing-extensions
+          ;
       };
-      pants-engine = stdenv.mkDerivation rec {
-        inherit src version;
-        pname = "pants-engine";
-        cargoDeps = rustPlatform.importCargoLock cargoLock;
 
-        sourceRoot = "${src.name}/src/rust/engine";
+      # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/BUILD#L27-L39
+      configurePhase = ''
+        cat > setup.py << EOF
+        from setuptools import setup, Extension
 
-        nativeBuildInputs = [
-          python
-          protobuf
-          rustPlatform.cargoSetupHook
-        ];
+        setup(
+            ext_modules=[Extension(name="dummy_twAH5rHkMN", sources=[])],
+        )
+        EOF
 
-        buildPhase = ''
-          export CARGO_BUILD_RUSTC=${rustc}/bin/rustc
+        cat > pyproject.toml << EOF
+        [build-system]
+        requires = ["setuptools"]
+        build-backend = "setuptools.build_meta"
 
-          # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/rust/engine/.cargo/config#L4
-          export RUSTFLAGS="--cfg tokio_unstable"
+        [project]
+        name = "pants"
+        version = "$version"
+        requires-python = "==3.10.*"
+        dependencies = [
+          "packaging",
+        ]
 
-          # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/rust/engine/BUILD#L32
-          ${cargo}/bin/cargo build \
-            --features=extension-module \
-            --release \
-            -p engine \
-            -p client
-        '';
+        [tool.setuptools]
+        include-package-data = true
 
-        installPhase = ''
+        [tool.setuptools.packages.find]
+        where = ["src/python"]
+        include = ["pants", "pants.*"]
+        namespaces = false
 
-          mkdir -p $out/lib/
-          cp target/release/libengine.so $out/lib/native_engine.so
+        [project.scripts]
+        pants = "pants.bin.pants_loader:main"
 
-          mkdir -p $out/bin/
-          cp target/release/pants $out/bin/native_client
-        '';
-      };
-    in
-      with python.pkgs;
-        buildPythonApplication {
-          inherit version src;
-          pname = "pants";
-          pyproject = true;
+        EOF
 
-          buildInputs = [
-            setuptools
-          ];
+        echo ${version} > src/python/pants/_version/VERSION
 
-          # curl -L -O https://raw.githubusercontent.com/pantsbuild/pants/release_2.20.0/3rdparty/python/requirements.txt
-          propagatedBuildInputs = [
-            ansicolors
-            chevron
-            fasteners
-            freezegun
-            ijson
-            node-semver
-            packaging
-            pex
-            psutil
-            pytest
-            python-lsp-jsonrpc
-            pyyaml
-            requests
-            setproctitle
-            setuptools
-            toml
-            types-freezegun
-            types-pyyaml
-            types-requests
-            types-setuptools
-            types-toml
-            typing-extensions
-          ];
+        cat > MANIFEST.in << EOF
+        include src/python/pants/_version/VERSION
+        include src/python/pants/engine/internals/native_engine.so
+        include src/python/pants/bin/native_client
+        recursive-include src/python/pants *.lock *.java *.scala *.lockfile.txt
+        EOF
 
-          # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/BUILD#L27-L39
-          configurePhase = ''
-            cat > setup.py << EOF
-            from setuptools import setup, Extension
+        find src/python -type d -exec bash -c "if [ -n \"$ls {}/*.py\" ]; then touch {}/__init__.py; fi" \;
+      '';
 
-            setup(
-                ext_modules=[Extension(name="dummy_twAH5rHkMN", sources=[])],
-            )
-            EOF
+      prePatch =
+        lib.strings.concatMapStrings
+        (patch_path: "patch -p1 --batch -u -i ${patch_path}\n")
+        patches;
 
-            cat > pyproject.toml << EOF
-            [build-system]
-            requires = ["setuptools"]
-            build-backend = "setuptools.build_meta"
+      preBuild = ''
 
-            [project]
-            name = "pants"
-            version = "$version"
-            requires-python = "==3.10.*"
-            dependencies = [
-              "packaging",
-            ]
+        # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/engine/internals/BUILD#L28
+        cp ${pants-engine}/lib/native_engine.so src/python/pants/engine/internals/
 
-            [tool.setuptools]
-            include-package-data = true
+        # https://github.com/pantsbuild/pants/blob/release_2.20.0/build-support/bin/rust/bootstrap_code.sh#L34
+        cp ${pants-engine}/bin/native_client src/python/pants/bin/
 
-            [tool.setuptools.packages.find]
-            where = ["src/python"]
-            include = ["pants", "pants.*"]
-            namespaces = false
+        export PREV_TMPDIR=$TMPDIR
+        rm -rf build dist *.egg-info
+        export TMPDIR=$(mktemp -d)
 
-            [project.scripts]
-            pants = "pants.bin.pants_loader:main"
+        mkdir -p $TMPDIR
+        chmod 1777 $TMPDIR
+      '';
 
-            EOF
+      #      check = false;
 
-            echo ${version} > src/python/pants/_version/VERSION
+      postInstall = ''
+        wrapProgram "$out/bin/pants" \
+          --set NO_SCIE_WARNING 1 \
+          --run "if [ -f .pants.bootstrap ]; then . .pants.bootstrap; fi"
 
-            cat > MANIFEST.in << EOF
-            include src/python/pants/_version/VERSION
-            include src/python/pants/engine/internals/native_engine.so
-            include src/python/pants/bin/native_client
-            recursive-include src/python/pants *.lock *.java *.scala *.lockfile.txt
-            EOF
-
-            find src/python -type d -exec bash -c "if [ -n \"$ls {}/*.py\" ]; then touch {}/__init__.py; fi" \;
-          '';
-
-          prePatch =
-            lib.strings.concatMapStrings
-            (patch_path: "patch -p1 --batch -u -i ${patch_path}\n")
-            patches;
-
-          preBuild = ''
-
-            # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/engine/internals/BUILD#L28
-            cp ${pants-engine}/lib/native_engine.so src/python/pants/engine/internals/
-
-            # https://github.com/pantsbuild/pants/blob/release_2.20.0/build-support/bin/rust/bootstrap_code.sh#L34
-            cp ${pants-engine}/bin/native_client src/python/pants/bin/
-          '';
-
-          postInstall = ''
-            wrapProgram "$out/bin/pants" \
-              --set NO_SCIE_WARNING 1 \
-              --run "if [ -f .pants.bootstrap ]; then . .pants.bootstrap; fi"
-          '';
-        }
-  );
-in {
-  inherit makePants;
+        rm -rf $TMPDIR
+        export TMPDIR=$PREV_TMPDIR
+      '';
+    };
 }
