@@ -34,7 +34,7 @@
           ;
       };
 
-      # curl -L -O https://raw.githubusercontent.com/pantsbuild/pants/release_2.20.0/3rdparty/python/requirements.txt
+      # curl -L -O https://raw.githubusercontent.com/pantsbuild/pants/release_2.22.0/3rdparty/python/requirements.txt
       propagatedBuildInputs = builtins.attrValues {
         inherit
           (pythonPackages)
@@ -43,7 +43,6 @@
           fasteners
           freezegun
           ijson
-          node-semver
           packaging
           pex
           psutil
@@ -60,10 +59,11 @@
           types-setuptools
           types-toml
           typing-extensions
+          node-semver
           ;
       };
 
-      # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/BUILD#L27-L39
+      # https://github.com/pantsbuild/pants/blob/release_2.22.0/src/python/pants/BUILD#L27-L39
       configurePhase = ''
         cat > setup.py << EOF
         from setuptools import setup, Extension
@@ -81,7 +81,7 @@
         [project]
         name = "pants"
         version = "$version"
-        requires-python = "==3.10.*"
+        requires-python = "==3.9.*"
         dependencies = [
           "packaging",
         ]
@@ -118,10 +118,10 @@
 
       preBuild = ''
 
-        # https://github.com/pantsbuild/pants/blob/release_2.20.0/src/python/pants/engine/internals/BUILD#L28
+        # https://github.com/pantsbuild/pants/blob/release_2.22.0/src/python/pants/engine/internals/BUILD#L28
         cp ${pants-engine}/lib/native_engine.so src/python/pants/engine/internals/
 
-        # https://github.com/pantsbuild/pants/blob/release_2.20.0/build-support/bin/rust/bootstrap_code.sh#L34
+        # https://github.com/pantsbuild/pants/blob/release_2.22.0/build-support/bin/rust/bootstrap_code.sh#L34
         cp ${pants-engine}/bin/native_client src/python/pants/bin/
 
         export PREV_TMPDIR=$TMPDIR
@@ -131,8 +131,6 @@
         mkdir -p $TMPDIR
         chmod 1777 $TMPDIR
       '';
-
-      #      check = false;
 
       postInstall = ''
         wrapProgram "$out/bin/pants" \

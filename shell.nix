@@ -10,7 +10,7 @@ pkgs.mkShell {
   nativeBuildInputs = let
     pants-bin = pkgs.callPackage ./. {};
   in [
-    pants-bin."release_2.20.1"
+    pants-bin."release_2.22.0"
     (pkgs.python3.withPackages (ps: [ps.pex]))
   ];
 }
