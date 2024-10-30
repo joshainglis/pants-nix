@@ -10,5 +10,5 @@ jobs:
         with:
           name: joshainglis
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: nix build '.#"release_2.22.0"'
-      - run: touch pants.toml && nix shell '.#"release_2.22.0"' --command pants --version
+      - run: nix build .
+      - run: touch pants.toml && nix shell . --command pants --version

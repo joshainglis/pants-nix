@@ -8,85 +8,69 @@
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs @ {
-    self,
-    nixpkgs,
-    flake-parts,
-    rust-overlay,
-    ...
-  }:
-    flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
-      perSystem = {
-        config,
-        self',
-        inputs',
-        system,
-        ...
-      }: let
-        overlays = [
-          (import rust-overlay)
-          (
-            final: prev: {
-              python39 = prev.python39.override {
-                packageOverrides = python-final: python-prev: {
-                  dnspython = python-prev.dnspython.overrideAttrs (old: {
-                    disabledTests =
-                      old.disabledTests
-                      ++ [
-                        "testCanonicalNameCNAME"
-                        "testCanonicalNameDangling"
-                        "testQueryUDPFallback"
-                        "testQueryUDPFallbackWithSocket"
-                        "testZoneForName1"
-                        "testZoneForName2"
-                      ];
-                  });
-                };
-              };
-            }
-          )
-        ];
-        pkgs = import nixpkgs {inherit system overlays;};
-        genPython = pkgs.python39.withPackages (ps: [
-          ps.pex
-          ps.aiofiles
-          ps.mypy
-          ps.pytest
-          ps.requests
-          ps.types-requests
-        ]);
+  outputs =
+    inputs @ { flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      imports = [ ./nix/pants.nix ];
+      perSystem = { config, pkgs, system, ... }:
+        {
+          _module.args.pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [
+              (import inputs.rust-overlay)
+              (
+                final: prev: {
+                  python39 = prev.python39.override {
+                    packageOverrides = python-final: python-prev: {
+                      dnspython = python-prev.dnspython.overrideAttrs (old: {
+                        disabledTests =
+                          old.disabledTests
+                          ++ [
+                            "testCanonicalNameCNAME"
+                            "testCanonicalNameDangling"
+                            "testQueryUDPFallback"
+                            "testQueryUDPFallbackWithSocket"
+                            "testZoneForName1"
+                            "testZoneForName2"
+                          ];
+                      });
+                    };
+                  };
+                }
+              )
 
-        genWrapper = pkgs.writeShellApplication {
-          name = "gen-releases";
-          runtimeInputs = [pkgs.cacert pkgs.nix-prefetch-git genPython];
-          text = ''
-            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-            export REQUESTS_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-            python -m gen "$@"
-          '';
-        };
-      in {
-        packages = pkgs.callPackage ./tags {inherit pkgs;};
+            ];
+          };
 
-        devShells.default = pkgs.mkShell {
-          packages = [
-            pkgs.cacert
-            pkgs.nix-prefetch-git
-            (pkgs.python3.withPackages (ps: [
-              ps.pex
-              ps.aiofiles
-              ps.mypy
-              ps.pytest
-              ps.requests
-              ps.types-requests
-            ]))
-          ];
-          shellHook = ''
-            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-            export REQUESTS_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-          '';
+          pants = {
+            version = "2.22.0";
+            hash = "sha256-1dmT41gmwgQz4gL2Ga51r1e48zqRSWXzWXORrH5ztag=";
+            python = pkgs.python39;
+          };
+
+          packages.default = config.pants.package;
+
+          devShells.default = pkgs.mkShell {
+            nativeBuildInputs = [ config.pants.package ];
+            packages = [
+              pkgs.cacert
+              pkgs.nix-prefetch-git
+              config.pants.package
+              (pkgs.python3.withPackages (ps: [
+                ps.pex
+                ps.aiofiles
+                ps.mypy
+                ps.pytest
+                ps.requests
+                ps.types-requests
+              ]))
+            ];
+            shellHook = ''
+              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              export REQUESTS_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            '';
+          };
         };
-      };
     };
 }
