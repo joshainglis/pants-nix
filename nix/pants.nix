@@ -175,7 +175,7 @@
 
         pantsCacheKey = pkgs.writeShellApplication {
           name = "pants-cache-key";
-          runtimeInputs = [ pants-bin config.pants.python pkgs.cacert ];
+          runtimeInputs = [ config.pants.package config.pants.python ];
           text = ''
             PYTHON_VERSION=$(${lib.getExe' config.pants.python "python"} --version | cut -d' ' -f2)
             PANTS_VERSION=$(${lib.getExe' config.pants.package "pants"} --version)
