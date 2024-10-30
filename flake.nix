@@ -35,6 +35,7 @@
                             "testZoneForName2"
                           ];
                       });
+                      django = python-prev.django4;
                     };
                   };
                 }
