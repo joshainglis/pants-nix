@@ -38,6 +38,9 @@
                       django = python-prev.django_4.overrideAttrs (old: {
                         disabled = python-prev.pythonOlder "3.9";
                       });
+                      typeguard = python-prev.typeguard.overrideAttrs (old: {
+                        propagatedBuildInputs = old.propagatedBuildInputs ++ [ python-prev.importlib-metadata ];
+                      });
                     };
                   };
                 }
@@ -56,7 +59,7 @@
           packages.pants-cache-key = config.pants.scripts.pants-cache-key;
 
           devShells.default = pkgs.mkShell {
-            nativeBuildInputs = [ config.pants.package config.pants.scripts.pants-cache-key];
+            nativeBuildInputs = [ config.pants.package config.pants.scripts.pants-cache-key ];
             packages = [
               pkgs.cacert
               pkgs.nix-prefetch-git
