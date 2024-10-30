@@ -35,7 +35,9 @@
                             "testZoneForName2"
                           ];
                       });
-                      django = python-prev.django_4;
+                      django = python-prev.django_4.overrideAttrs (old: {
+                        disabled = pythonOlder "3.9";
+                      });
                     };
                   };
                 }
