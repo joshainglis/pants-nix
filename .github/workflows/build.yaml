@@ -8,7 +8,7 @@ jobs:
       - uses: cachix/install-nix-action@v27
       - uses: cachix/cachix-action@v15
         with:
-          name: pants-nix
+          name: joshainglis
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix build '.#"release_2.22.0"'
       - run: touch pants.toml && nix shell '.#"release_2.22.0"' --command pants --version
