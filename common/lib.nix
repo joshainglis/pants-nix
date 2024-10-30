@@ -135,6 +135,7 @@
       postInstall = ''
         wrapProgram "$out/bin/pants" \
           --set NO_SCIE_WARNING 1 \
+          --set PYTHONWARNINGS "ignore::DeprecationWarning:pkg_resources,ignore::DeprecationWarning:pants.init.options_initializer" \
           --run "if [ -f .pants.bootstrap ]; then . .pants.bootstrap; fi"
 
         rm -rf $TMPDIR

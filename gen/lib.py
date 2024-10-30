@@ -7,21 +7,13 @@ import logging
 import operator
 import os
 import re
-import shlex
 import shutil
 import string
-import subprocess as sp
-import sys
-from collections.abc import AsyncGenerator
+import tomllib
 from dataclasses import dataclass
-from functools import total_ordering
-from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, ClassVar, Generator, NamedTuple
-
-import requests
-import tomllib
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +21,9 @@ git_url_re = re.compile(r"^git\+(?P<url>https://[^/]+/[^/]+/[^/.?]+(.git)?)(?P<r
 
 output_hash_overrides = json.loads(Path("output_hash_overrides.json").read_text("utf-8"))
 
-
 semaphore = asyncio.Semaphore(50)
+TMPDIR = Path.cwd() / ".tmp"
+TMPDIR.mkdir(exist_ok=True)
 
 
 async def _run(command: str) -> str:
@@ -39,6 +32,7 @@ async def _run(command: str) -> str:
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
+            env=os.environ | {"TMPDIR": TMPDIR},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -100,12 +94,15 @@ async def generate_single_tag(args: Any) -> None:
 
 
 async def _nix_prefetch_git(url: str, rev: str) -> str:
-    return await _run(f"nix-prefetch-git {url} --rev {rev} --quiet")
+    with TemporaryDirectory(dir=TMPDIR) as d:
+        return await _run(f"nix-prefetch-git {url} --rev {rev} --quiet --out {d}")
 
 
 async def _prefetch_output_hashes(cargo_lock: str) -> list[tuple[str, str]]:
     futures = [_prefetch_package_hash(package) for package in tomllib.loads(cargo_lock)["package"]]
-    return [result for f in asyncio.as_completed(futures) if (result := await f) is not None]
+    res = [result for f in asyncio.as_completed(futures) if (result := await f) is not None]
+    print(res)
+    return res
 
 
 async def _prefetch_package_hash(package) -> tuple[str, str] | None:
@@ -216,7 +213,7 @@ class Repo:
         return await _run(f"git -C {self.path} show {tag}:{path}")
 
     async def tag_hash(self, tag: str) -> str:
-        with TemporaryDirectory() as d:
+        with TemporaryDirectory(dir=TMPDIR) as d:
             archive = Path(d) / "archive.tar.gz"
             await _run(f"git -C {self.path} archive -o {archive} {tag}")
             path = Path(d) / f"{tag}.tar.gz"
@@ -244,7 +241,7 @@ def maybe_int(s: str | None) -> int | None:
     return int(s)
 
 
-INT32_MAX = 2**64 - 1
+INT32_MAX = 2 ** 64 - 1
 
 
 @dataclass(frozen=True)

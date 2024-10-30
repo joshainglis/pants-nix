@@ -2,7 +2,7 @@
   description = "Pants build system Nix flake";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
     flake-parts.url = "github:hercules-ci/flake-parts";
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
@@ -48,11 +48,30 @@
           )
         ];
         pkgs = import nixpkgs {inherit system overlays;};
+        genPython = pkgs.python39.withPackages (ps: [
+          ps.pex
+          ps.aiofiles
+          ps.mypy
+          ps.pytest
+          ps.requests
+          ps.types-requests
+        ]);
+
+        genWrapper = pkgs.writeShellApplication {
+          name = "gen-releases";
+          runtimeInputs = [pkgs.cacert pkgs.nix-prefetch-git genPython];
+          text = ''
+            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            export REQUESTS_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            python -m gen "$@"
+          '';
+        };
       in {
         packages = pkgs.callPackage ./tags {inherit pkgs;};
 
         devShells.default = pkgs.mkShell {
           packages = [
+            pkgs.cacert
             pkgs.nix-prefetch-git
             (pkgs.python3.withPackages (ps: [
               ps.pex
@@ -63,6 +82,10 @@
               ps.types-requests
             ]))
           ];
+          shellHook = ''
+            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            export REQUESTS_CA_BUNDLE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+          '';
         };
       };
     };
