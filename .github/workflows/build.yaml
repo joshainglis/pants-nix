@@ -1,8 +1,11 @@
 name: Test
 'on': push
 jobs:
-  build-2-22:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
