@@ -22,6 +22,12 @@
         type = pkgs.lib.types.package;
         description = "Pants package";
       };
+      scripts = pkgs.lib.mkOption {
+        internal = true;
+        readOnly = true;
+        type = pkgs.lib.types.attrsOf pkgs.lib.types.package;
+        description = "Pants scripts";
+      };
     };
     config.pants =
       let
@@ -166,9 +172,24 @@
             export TMPDIR=$PREV_TMPDIR
           '';
         };
+
+        pantsCacheKey = pkgs.writeShellApplication {
+          name = "pants-cache-key";
+          runtimeInputs = [ pants-bin config.pants.python pkgs.cacert ];
+          text = ''
+            PYTHON_VERSION=$(${lib.getExe' config.pants.python "python"} --version | cut -d' ' -f2)
+            PANTS_VERSION=$(${lib.getExe' config.pants.package "pants"} --version)
+            KEY="$PANTS_VERSION $PYTHON_VERSION"
+            echo "$KEY" | sha256sum | cut -d' ' -f1
+          '';
+        };
+
       in
       {
         package = pants_app;
+        scripts = {
+          pants-cache-key = pantsCacheKey;
+        };
       };
   };
 }
