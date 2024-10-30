@@ -36,7 +36,7 @@
                           ];
                       });
                       django = python-prev.django_4.overrideAttrs (old: {
-                        disabled = pythonOlder "3.9";
+                        disabled = python-prev.pythonOlder "3.9";
                       });
                     };
                   };
